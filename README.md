@@ -1,21 +1,19 @@
 ------------------------ *Property Manager by Mark Lasal - ML -* --------------------------------------------
 
 
-#                       ML-Property-Manager 
+#                       ML Property Availability 
 
 
 ## Solution : 
+   Check if any apartments is available (free or not already booked) given the user's dates and numeber of guest
    It loads the booking data from Google spreadsheets to a DWH featured by :-) **sqlite3** relational database in memory.
    
-   Running simple SQL on the just created relational DB, the app presents interesting insights as like as:
+   Running simple SQL on the just created relational DB, the app shows:
    
-   - Summary key metrics cross structures and by structure
+   - the list of the available apartments
        
-   - Top 5 most profitable stays / bookings and bottom 5 least profitable ones
+   - the detailed calendar overview focused on the user stay's selected dates +/- some days
        
-   - Top 5 most profitable months and bottom 5 least profitable ones
-       
-   - ....
 
    The solution wants as inputs:
    - GoogleSheets where are tracked all the historical bookings, past and future
