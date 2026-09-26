@@ -22,6 +22,8 @@ import pandas as pd
 
 import calendar
 import datetime
+from datetime import date, timedelta
+
 
 def adapt_date_iso(val):
     """Adapt datetime.date to ISO 8601 date."""
@@ -79,8 +81,6 @@ print('----------------------------------------------------> IS THE STARTUP PHAS
 
 
 
-st.set_page_config(page_title="ML Property Manager", layout="centered")
-st.header("ML Property Manager 1.0")
 
 #=============================================================================================================================
 # For every managed strucure Read the data contained in the related Google Spreadsheet 
@@ -96,8 +96,10 @@ def ReadGSheets(trigger):
     gs_connection = gspread.service_account_from_dict(credentials_dict)
 
 
-    Structures = [  {'Ordinal': 1, 'Structure':'Dalla Nonna', 'StructureAddress':'Via ARMENISE 7',     'GoogleSheetName': 'Dalla Nonna Agenda 2025', 'From Date': '2025-05-31', 'Initial Investment': 150000.00},
-                    {'Ordinal': 2, 'Structure':'La Cecchina', 'StructureAddress':'Via POSTIGLIONE 14b', 'GoogleSheetName': 'La Cecchina Agenda 2025', 'From Date': '2025-08-01', 'Initial Investment': 150000.00} 
+    Structures = [  {'Ordinal': 1, 'Structure':'Dalla Nonna',       'StructureAddress':'Via ARMENISE 7',      'GoogleSheetName': 'Dalla Nonna Agenda 2025',         'From Date': '2025-05-31', 'Initial Investment': 150000.00, 'nick_name': 'DaNonn', 'max_guests': 2, 'hyperlink': 'https://airbnb.it/h/da-nonna'}
+                   ,{'Ordinal': 2, 'Structure':'La Cecchina',       'StructureAddress':'Via POSTIGLIONE 14b', 'GoogleSheetName': 'La Cecchina Agenda 2025',         'From Date': '2025-08-01', 'Initial Investment': 150000.00, 'nick_name': 'LaCec.', 'max_guests': 2, 'hyperlink': 'https://airbnb.it/h/lacecchina'} 
+                   ,{'Ordinal': 3, 'Structure':'Nonna Lia',         'StructureAddress':'Via G PETRONI 8',     'GoogleSheetName': 'Nonna Lia all bookings',          'From Date': '2025-12-05', 'Initial Investment': 250000.00, 'nick_name': 'N. Lia', 'max_guests': 4, 'hyperlink': 'https://www.nonna-lia.it'} 
+                   ,{'Ordinal': 4, 'Structure':'Dimora Eleutheria', 'StructureAddress':'Via G PETRONI 8G',    'GoogleSheetName': 'Dimora Eleutheria all bookings',  'From Date': '2025-12-31', 'Initial Investment': 250000.00, 'nick_name': 'Dimora', 'max_guests': 4, 'hyperlink': 'https://airbnb.it/h/dimoraeleutheria'} 
                 ]
     for structure in Structures:
         # Open a sheet from a spreadsheet in one go
@@ -276,7 +278,9 @@ def LoadDWH(connection, Structures):
     'TaxPaidFlag BOOLEAN',
     'CleaningCost REAL',
     'LaundryCost REAL',
-    'Note TEXT'
+    'Note TEXT',
+    'CleaningBy TEXT',
+    'Auto TEXT'
     ]
     columns_str = 'booking_id INTEGER PRIMARY KEY, ' + ', '.join(f'{col}' for col in columns)
     create_table_sql = f'CREATE TABLE IF NOT EXISTS "{table_name}" ({columns_str})'
@@ -288,7 +292,7 @@ def LoadDWH(connection, Structures):
 #     Only the real booked are loaded (Status <> 'Free') and not the free slots - not booked or not still booked time windows -
     insert_into = f'''
     INSERT INTO {table_name} (
-    StructureName, FromDate, ToDate, Channel, Nights, Guests, Status, GuestAmountPaid, Tax, HostEarnings, PlatformEarnings, TouristTax, TaxPaidFlag, CleaningCost, LaundryCost, Note)
+    StructureName, FromDate, ToDate, Channel, Nights, Guests, Status, GuestAmountPaid, Tax, HostEarnings, PlatformEarnings, TouristTax, TaxPaidFlag, CleaningCost, LaundryCost, Note, CleaningBy, Auto)
     '''
     select = ''
     for structure in Structures:
@@ -314,6 +318,8 @@ def LoadDWH(connection, Structures):
             ,CAST(REPLACE(REPLACE("Cleaning Fee",'€',''), ',','') AS REAL)  AS CleaningCost
             ,CAST(REPLACE(REPLACE("Laundry Fee",'€',''), ',','') AS REAL)  AS LaundryCost
             ,"Note" AS Note
+            ,"Cleaning By" AS CleaningBy
+            ,"Auto (Y / N / ?)" AS Auto
         FROM "{table_name}"
         WHERE LOWER("Status") <> 'free'
         ''' 
@@ -428,7 +434,10 @@ LIMIT 10
 'AvailableToDate DATE',
 'GoogleSheetName TEXT',
 'InitialInvestment REAL',
-'Ordinal INTEGER'
+'Ordinal INTEGER',
+'nick_name',
+'max_guests',
+'hyperlink'
     ]
     columns_str = ', '.join(f'{col}' for col in columns)
     create_table_sql = f'CREATE TABLE IF NOT EXISTS "{table_name}" ({columns_str})'
@@ -444,7 +453,7 @@ LIMIT 10
         select = f'SELECT DATE(MAX("To Date")) FROM "{structure['GoogleSheetName']}"'
         cursor.execute(select)
         row = cursor.fetchone()
-        values = [structure['Structure'], structure['StructureAddress'], structure['From Date'], row[0], structure['GoogleSheetName'], structure['Initial Investment'], structure['Ordinal']]
+        values = [structure['Structure'], structure['StructureAddress'], structure['From Date'], row[0], structure['GoogleSheetName'], structure['Initial Investment'], structure['Ordinal'], structure['nick_name'], structure['max_guests'], structure['hyperlink'] ]
         cursor.execute(insert_sql, values)
     #print(f'Table "{table_name}" successfully loaded.')
     
@@ -515,6 +524,8 @@ LIMIT 10
         id INTEGER PRIMARY KEY,
         year INTEGER NOT NULL,
         month INTEGER NOT NULL,
+        IT_description TEXT NOT NULL,
+        EN_description TEXT NOT NULL,
         first_day_of_month TEXT NOT NULL,
         last_day_of_month TEXT NOT NULL,
         season TEXT NOT NULL
@@ -542,11 +553,50 @@ LIMIT 10
                 season = 'summer'
             else: # month in [9, 10, 11]
                 season = 'fall / autumn'
+ 
+            # Description of the month in the year: yyyy-month_name in ITalian and in ENglish
+            if month == 1 :
+                IT_description = f'{year} - GEN'
+                EN_description = f'{year} - Jan'
+            elif month == 2 :
+                IT_description = f'{year} - FEB'
+                EN_description = f'{year} - Feb'
+            elif month == 3 :
+                IT_description = f'{year} - MAR'
+                EN_description = f'{year} - Mar'
+            elif month == 4 :
+                IT_description = f'{year} - APR'
+                EN_description = f'{year} - Apr'
+            elif month == 5 :
+                IT_description = f'{year} - MAG'
+                EN_description = f'{year} - May'
+            elif month == 6 :
+                IT_description = f'{year} - GIU'
+                EN_description = f'{year} - Jun'
+            elif month == 7 :
+                IT_description = f'{year} - LUG'
+                EN_description = f'{year} - Jul'
+            elif month == 8 :
+                IT_description = f'{year} - AGO'
+                EN_description = f'{year} - Aug'
+            elif month == 9 :
+                IT_description = f'{year} - SET'
+                EN_description = f'{year} - Sep'
+            elif month == 10 :
+                IT_description = f'{year} - OTT'
+                EN_description = f'{year} - Oct'
+            elif month == 11 :
+                IT_description = f'{year} - NOV'
+                EN_description = f'{year} - Nov'
+            else :
+                IT_description = f'{year} - DIC'
+                EN_description = f'{year} - Dec'
         
+       
             cursor.execute('''
-                INSERT INTO Calendar (year, month, first_day_of_month, last_day_of_month, season)
-                VALUES (?, ?, ?, ?, ?);
-                ''', (year, month, first_day, last_day, season))
+                INSERT INTO Calendar (year, month, IT_description, EN_description, first_day_of_month, last_day_of_month, season)
+                VALUES (?, ?, ?, ?, ?, ?, ?);
+                ''', (year, month, IT_description, EN_description, first_day, last_day, season))
 
     connection.commit()
 
@@ -1043,6 +1093,256 @@ ORDER BY Metric
     st.dataframe(dataframe)
 
 
+#
+
+def PropertyAvailability():
+    print('----------------------------------------------------> PropertyAvailability Run number:', st.session_state.Run)
+
+    connection =  get_db_connection(st.session_state.data_refresh_timestamp)
+    cursor = connection.cursor()
+    year = st.session_state.Year
+
+    st.subheader("🏠 Apartment Availability")
+
+    # --- Search criteria in TOP BAR ---
+    with st.container(border=True):
+        st.subheader("🔍 Stay Details")
+        
+        # 3 columns in the body of the page
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            date_range = st.date_input(
+                "🗓️ **Select Dates** (Check-in / Check-out)",
+                value=(date.today(), date.today() + timedelta(days=3)),
+                min_value=date.today(),
+                format="DD/MM/YYYY"
+            )
+        
+        with col2:
+            guests = st.number_input("👨‍👩‍👧‍👦 **Guests**", min_value=1, max_value=4, value=2)
+            
+        #with col3:
+        #    st.write("") # to have a vertical alignment for the button on mobile
+        #    st.write("")
+        #    btn_search = st.button("🔎 Check Availability", type="primary", use_container_width=True)
+
+    # Estraggo le date se l'utente ha completato la selezione
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        check_in, check_out = date_range
+    else:
+    # Fallback management if the user has selected only one date
+        check_in = date_range if not isinstance(date_range, tuple) else date_range[0]
+        check_out = check_in # + timedelta(days=1) 
+
+    nights = (check_out - check_in).days
+   
+
+    if check_in.month == check_out.month:
+        dates_str = f"{check_in.strftime('%d')}-{check_out.strftime('%d %b')}"
+    else:
+        dates_str = f"{check_in.strftime('%d %b')}-{check_out.strftime('%d %b')}"
+
+    nights_label = "1 night" if nights == 1 else f"{nights} nights"
+    guests_label = "1 guest" if guests == 1 else f"{guests} guests"
+
+    summary_text = f"**{dates_str}** ({nights_label}) • **{guests_label}**"
+
+    select = f"""
+    WITH structures_with_capacity as
+    ( 
+    SELECT 
+        structures.StructureName  AS StructureName
+        ,structures.nick_name     AS nick_name
+        ,structures.max_guests    AS max_guests
+        ,structures.hyperlink     AS hyperlink
+        ,structures.ordinal       AS ordinal
+    FROM structures
+    WHERE structures.max_guests >= {guests}
+    )
+    SELECT 
+        structures.StructureName AS StructureName
+        ,structures.nick_name     AS nick_name
+        ,structures.max_guests    AS max_guests
+        ,structures.hyperlink     AS hyperlink
+        ,structures.ordinal       AS ordinal
+        , SUM (
+        CASE WHEN '{check_in}' < bookings.ToDate AND '{check_out}' >= bookings.FromDate THEN 1 -- there is a booking
+            ELSE 0
+        END   )   AS nr_bookings
+    FROM structures_with_capacity structures 
+        LEFT OUTER JOIN bookings ON (structures.StructureName = bookings.StructureName) 
+    GROUP BY structures.StructureName, structures.StructureName, structures.nick_name, structures.max_guests, structures.hyperlink, structures.ordinal
+    HAVING nr_bookings = 0
+    ORDER BY structures.ordinal
+            """
+
+    print(select)
+    print("rows in the select:")
+    cursor.execute(select)
+    rows = cursor.fetchall()
+    for row in rows:
+        print(row) 
+
+    apartments = [
+        {
+        "StructureName": row[0],
+        "nick_name": row[1],
+        "max_guests": row[2],
+        "hyperlink": row[3]
+        }
+        for row in rows
+    ]
+
+    if not apartments:
+        st.markdown(f"##### <small>❌ NO APTs for {summary_text}", unsafe_allow_html=True)
+    else:
+        st.markdown(f"##### <small>👍 APTs for {summary_text}", unsafe_allow_html=True)
+
+        for apt in apartments:
+            with st.container(border=True):
+                apt_link = f"[{apt['StructureName']}]({apt['hyperlink']})"
+                st.markdown(f"*{apt_link}* 🟢 Available")
+                st.caption(f"Max capacity: {apt['max_guests']} guests")
+
+
+
+
+    # ----------------------------------------------------
+    # ----------------------------------------------------
+    # extended time window to show: start_date -> end_date    
+    # ----------------------------------------------------
+    # ----------------------------------------------------
+    offset = 2
+    start_date = check_in - timedelta(days=offset)
+    end_date = check_out + timedelta(days=offset)
+    num_days = (end_date - start_date).days 
+
+
+    # create the rows for the date in the extended time window 
+    # df_grid: dates (in row (y) axis) x apartments (in column (x) axis ):
+    # for every apartment for every date in extended_date the cell value is 0 when  free/available or >0 when occupied 
+
+
+
+    select = f"""
+    
+    WITH RECURSIVE
+    extended_dates (date) AS 
+        (
+        SELECT 
+            '{start_date}' AS date
+        UNION ALL
+        SELECT 
+            DATE(date, '+1 day') AS date
+        FROM extended_dates
+        LIMIT {num_days}
+        )
+
+    , structures_with_capacity as
+        ( 
+        SELECT 
+            structures.StructureName  AS StructureName
+            ,structures.nick_name     AS nick_name
+            ,structures.max_guests    AS max_guests
+            ,structures.hyperlink     AS hyperlink
+        FROM structures
+        WHERE structures.max_guests >= {guests}
+        )
+
+    , booked_days as
+        (
+        SELECT
+            bookings.StructureName    AS StructureName
+            ,bookings_by_day.Day      AS Day
+            ,bookings.Booking_id      AS Booking_id
+        FROM bookings
+        INNER JOIN bookings_by_day ON (bookings_by_day.Booking_id = bookings.Booking_id) 
+        )
+        SELECT
+            extended_dates.date                   AS Date
+    """
+    
+    for str in Structures:
+        if str['max_guests'] >= guests:
+            select = select + f"""
+            ,SUM(CASE WHEN structures_with_capacity.StructureName = '{str['Structure']}' THEN CASE WHEN booked_days.Booking_id IS NULL THEN 0 ELSE 1 END ELSE 0 END) AS [{str['nick_name']}]
+            """
+    select = select + f"""
+        FROM extended_dates,
+            structures_with_capacity
+            LEFT OUTER JOIN booked_days ON (booked_days.StructureName = structures_with_capacity.StructureName AND 
+                                            booked_days.Day = extended_dates.date) 
+        GROUP BY extended_dates.date
+        ORDER BY extended_dates.date
+    """
+    
+    print (select)
+    df_grid = pd.read_sql_query(select, connection)
+
+    # Format the value for a better rendering of the date and the free/occupied cell
+    df_grid['Date'] = pd.to_datetime(df_grid['Date']).dt.strftime('%a %d/%m')
+    # 4. Mappiamo 0 -> 🟢 e 1 -> 🔴 su tutte le colonne degli appartamenti
+    apt_cols = [c for c in df_grid.columns if c != 'Date']
+    for col in apt_cols:
+        df_grid[col] = df_grid[col].map({0: '     ✅', 1: '     ⛔'}) # ✅: free |⛔: busy
+
+
+
+    # --- Extended rendering style for the dataframe ---
+    def style_extended_calendar(df):
+        styles = pd.DataFrame('', index=df.index, columns=df.columns)
+        
+        for row_idx in range(len(df)):
+            # is row_idx the row related to a date in the user selected stay dates ?  
+            row_date = start_date + timedelta(days=row_idx)
+            is_selected_stay = (check_in <= row_date < check_out)
+            
+            # row background: soft azure if the row in the selected dates
+            # font weight   : bold       if the row in the selected dates 
+            row_bg = "#EBF3FE" if is_selected_stay else "#FFFFFF"
+            font_weight = "bold" if is_selected_stay else "normal"
+            
+            # 1. "Date" column style
+            styles.iloc[row_idx, 0] = (
+                f"background-color: {row_bg}; "
+                f"color: #000000; "
+                f"font-weight: {font_weight}; "
+                f"text-align: center;"
+            )
+            
+            # 2. Apartment columns style
+            for col_idx in range(1, len(df.columns)):
+                val = df.iloc[row_idx, col_idx]
+                
+                cell_bg = row_bg
+                    
+                styles.iloc[row_idx, col_idx] = (
+                    f"background-color: {cell_bg}; "
+                    f"text-align: center; "
+                    f"font-size: 1.15rem; "  # --> to study better: it seems good gor the emoticons
+                    f"font-weight: {font_weight};"
+                )
+        return styles
+
+
+    with st.container(border=True):
+
+        st.subheader("🗓️ Calendar Overview")
+        #st.subheader("🗓️ Extended Stay Calendar")
+        st.write(f"Showing your selected stay (**{dates_str}**) with {offset} adjacent days.")
+
+
+        # Apply the style to the dataframe and then visulize it
+        styled_df = df_grid.style.apply(style_extended_calendar, axis=None)
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+        st.caption("✅ = Free | ⛔ = Busy | **Highlight** = Selected Stay")
+
+
+
+
+
 def trigger_data_refresh():
     st.session_state.data_refresh_timestamp = datetime.datetime.now()
 
@@ -1051,6 +1351,7 @@ def trigger_data_refresh():
     LoadTablesFromSheets(connection, Structures)
     CleaningData(connection, Structures)
     LoadDWH(connection, Structures)
+
 
 
 def DataRefresh():
@@ -1079,11 +1380,19 @@ if not st.session_state.LoggedIn:
     #if st.button("OK"):
     #    pass
 
+
+
+st.set_page_config(page_title="ML Property Manager", layout="centered")
+#st.header("NEW ML Property Manager 2.0")
+
+
+
 year = st.session_state.Year
 HighLevelInsights_page = st.Page(HighLevelInsights, title= str(year) + " Insights", icon="🏠")
 ProfitLostByStructure_page = st.Page(ProfitLostByStructure, title= str(year) + " P&L by Structure", icon="📈")
 SoldNightFigures_page = st.Page(SoldNightFigures, title= str(year) + " Sold Night Figures", icon="🌙")
 
+PropertyAvailability_page = st.Page(PropertyAvailability, title= "Rental Availability", icon="🏠")
 
 DataRefresh_page = st.Page(DataRefresh, title= "Data Refresh", icon="🔄")
 
@@ -1091,14 +1400,16 @@ DataRefresh_page = st.Page(DataRefresh, title= "Data Refresh", icon="🔄")
 
 pg = st.navigation(
         {
-            "Insights": [HighLevelInsights_page, ProfitLostByStructure_page, SoldNightFigures_page],
+            #"Insights": [HighLevelInsights_page, ProfitLostByStructure_page, SoldNightFigures_page],
+            "Booking": [PropertyAvailability_page],
             "Settings": [DataRefresh_page],
         }
     )
 pg.run()
 
 
-                                          
+print (st.user)
+
 print('----------------------------------------------------> This the last istruction Run number:', st.session_state.Run)
 
 
