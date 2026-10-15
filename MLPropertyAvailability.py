@@ -99,7 +99,7 @@ def ReadGSheets(trigger):
     Structures = [  {'Ordinal': 1, 'Structure':'Dalla Nonna',       'StructureAddress':'Via ARMENISE 7',      'GoogleSheetName': 'Dalla Nonna Agenda 2025',         'From Date': '2025-05-31', 'Initial Investment': 150000.00, 'nick_name': 'DaNonn', 'max_guests': 2, 'hyperlink': 'https://airbnb.it/h/da-nonna'}
                    ,{'Ordinal': 2, 'Structure':'La Cecchina',       'StructureAddress':'Via POSTIGLIONE 14b', 'GoogleSheetName': 'La Cecchina Agenda 2025',         'From Date': '2025-08-01', 'Initial Investment': 150000.00, 'nick_name': 'LaCec.', 'max_guests': 2, 'hyperlink': 'https://airbnb.it/h/lacecchina'} 
                    ,{'Ordinal': 3, 'Structure':'Nonna Lia',         'StructureAddress':'Via G PETRONI 8',     'GoogleSheetName': 'Nonna Lia all bookings',          'From Date': '2025-12-05', 'Initial Investment': 250000.00, 'nick_name': 'N. Lia', 'max_guests': 4, 'hyperlink': 'https://www.nonna-lia.it'} 
-                   ,{'Ordinal': 4, 'Structure':'Dimora Eleutheria', 'StructureAddress':'Via G PETRONI 8G',    'GoogleSheetName': 'Dimora Eleutheria all bookings',  'From Date': '2025-12-31', 'Initial Investment': 250000.00, 'nick_name': 'Dimora', 'max_guests': 4, 'hyperlink': 'https://airbnb.it/h/dimoraeleutheria'} 
+                   #,{'Ordinal': 4, 'Structure':'Dimora Eleutheria', 'StructureAddress':'Via G PETRONI 8G',    'GoogleSheetName': 'Dimora Eleutheria all bookings',  'From Date': '2025-12-31', 'Initial Investment': 250000.00, 'nick_name': 'Dimora', 'max_guests': 4, 'hyperlink': 'https://airbnb.it/h/dimoraeleutheria'} 
                 ]
     for structure in Structures:
         # Open a sheet from a spreadsheet in one go
