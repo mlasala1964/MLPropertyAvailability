@@ -67,6 +67,25 @@ else:
 
 if "Year" not in st.session_state:
     st.session_state.Year = 2026
+
+high_season_periods = [
+                        {"name" : "Summer 2026",
+                        "start": '2026-04-23', # 23 April 2026
+                        "end"  : '2026-11-02'  # 2 November 2026
+                        },
+                        {"name" : "Xmas 2026",
+                        "start": '2026-12-19', # 19 December 2026
+                        "end"  : '2027-01-10'  # 10 January 2027
+                        },
+                        {"name" : "Easter 2027",
+                        "start": '2027-03-25', # 25 March 2027
+                        "end"  : '2027-03-31'  # 31 March 2027
+                        },
+                        {"name" : "Summer 2027",
+                        "start": '2027-04-23', # 23 April 2027
+                        "end"  : '2027-11-02'  # 2 November 2027
+                        }
+                      ]
   
 # 1. Initialize a trigger to force the data refresh
 if 'data_refresh_timestamp' not in st.session_state:
@@ -99,7 +118,7 @@ def ReadGSheets(trigger):
     Structures = [  {'Ordinal': 1, 'Structure':'Dalla Nonna',       'StructureAddress':'Via ARMENISE 7',      'GoogleSheetName': 'Dalla Nonna Agenda 2025',         'From Date': '2025-05-31', 'Initial Investment': 150000.00, 'nick_name': 'DaNonn', 'max_guests': 2, 'hyperlink': 'https://airbnb.it/h/da-nonna'}
                    ,{'Ordinal': 2, 'Structure':'La Cecchina',       'StructureAddress':'Via POSTIGLIONE 14b', 'GoogleSheetName': 'La Cecchina Agenda 2025',         'From Date': '2025-08-01', 'Initial Investment': 150000.00, 'nick_name': 'LaCec.', 'max_guests': 2, 'hyperlink': 'https://airbnb.it/h/lacecchina'} 
                    ,{'Ordinal': 3, 'Structure':'Nonna Lia',         'StructureAddress':'Via G PETRONI 8',     'GoogleSheetName': 'Nonna Lia all bookings',          'From Date': '2025-12-05', 'Initial Investment': 250000.00, 'nick_name': 'N. Lia', 'max_guests': 4, 'hyperlink': 'https://www.nonna-lia.it'} 
-                   #,{'Ordinal': 4, 'Structure':'Dimora Eleutheria', 'StructureAddress':'Via G PETRONI 8G',    'GoogleSheetName': 'Dimora Eleutheria all bookings',  'From Date': '2025-12-31', 'Initial Investment': 250000.00, 'nick_name': 'Dimora', 'max_guests': 4, 'hyperlink': 'https://airbnb.it/h/dimoraeleutheria'} 
+                   ,{'Ordinal': 4, 'Structure':'Dimora Eleutheria', 'StructureAddress':'Via G PETRONI 8G',    'GoogleSheetName': 'Dimora Eleutheria all bookings',  'From Date': '2025-12-31', 'Initial Investment': 250000.00, 'nick_name': 'Dimora', 'max_guests': 4, 'hyperlink': 'https://airbnb.it/h/dimoraeleutheria'} 
                 ]
     for structure in Structures:
         # Open a sheet from a spreadsheet in one go
@@ -243,9 +262,15 @@ def CleaningData(connection, Structures):
 #		--------------		    ------------------------			                ------------		                    #
 #		      |										                                      |			                        #
 #		      |										                                      |			                        #
-#		      |			        ____________		    ___________________               |			                        #
-#		      |---------------> | bookings | --------->	| bookings_by_day | <-------------			                        #
-#					            ------------		    -------------------					                                #
+#		      |			        ____________		    ___________________               |		 ________________           #
+#		      |---------------> | bookings | --------->	| bookings_by_day | <-------------<------|  daily_price |           #
+#					            ------------		    -------------------				  |      ----------------           #
+#		       										                                      |			                        #
+#		       										                                      |			                        #
+#															                    __________|___________                      #
+#															                    | high_season_periods |                     #
+#															                    -----------------------                     #
+#															                                                                #
 #															                                                                #
 #===========================================================================================================================#
 #===========================================================================================================================#
@@ -480,6 +505,13 @@ LIMIT 10
 , 'AmenitiesCost REAL'
 , 'AvailableFromDate DATE'
 , 'AvailableToDate DATE'
+, 'DailyCommonCost REAL'
+, 'HighSeasonBasePrice REAL'
+, 'HighSeason3GuestPrice REAL'
+, 'HighSeason4GuestPrice REAL'
+, 'LowSeasonBasePrice REAL'
+, 'LowSeason3GuestPrice REAL'
+, 'LowSeason4GuestPrice REAL'
     ]
 
     columns_str = 'common_costs_by_year_id INTEGER PRIMARY KEY, ' + ', '.join(f'{col}' for col in columns)
@@ -493,14 +525,14 @@ LIMIT 10
     placeholders = ', '.join(['?'] * len(columns))
     insert_sql = f'''
         INSERT INTO "{table_name}" 
-        (StructureName, Year, Months, Days, PropertyTax,  CondoFees,  ElectricityCost,  GasCost,  WiFiCost, MaintenanceMiscellaneousCost, AmenitiesCost, AvailableFromDate, AvailableToDate)
+        (StructureName, Year, Months, Days, PropertyTax,  CondoFees,  ElectricityCost,  GasCost,  WiFiCost, MaintenanceMiscellaneousCost, AmenitiesCost, AvailableFromDate, AvailableToDate, DailyCommonCost, HighSeasonBasePrice, HighSeason3GuestPrice, HighSeason4GuestPrice, LowSeasonBasePrice, LowSeason3GuestPrice, LowSeason4GuestPrice)
         VALUES ({placeholders})
     '''
     for structure in Structures:
         for row in structure['Common Costs by Year'] [1:]:
             # sheet row values:                   ['Year', 'Month', 'Days', 'Property Tax',                          'Condo Fees',                            'Electricity Cost',                      'Gas Cost',                              'Wi-Fi',                                 'Maintenance and Miscellaneous Cost',    'Amenities Cost',                       'From Date',         'To Date']
-            # table columns:      'StructureName', 'Year', 'Months','Days', 'PropertyTax',                           'CondoFees',                             'ElectricityCost',                       'GasCost',                               'WiFiCost',                              'MaintenanceMiscellaneousCost',          'AmenitiesCost',                        'AvailableFromDate', 'AvailableToDate'
-            values = [     structure['Structure'], row[0], row[1],  row[2], row[3].replace('€','',).replace(',',''), row[4].replace('€','',).replace(',',''), row[5].replace('€','',).replace(',',''), row[6].replace('€','',).replace(',',''), row[7].replace('€','',).replace(',',''), row[8].replace('€','',).replace(',',''), row[9].replace('€','',).replace(',',''), row[10],            row[11]   ]  
+            # table columns:      'StructureName', 'Year', 'Months','Days', 'PropertyTax',                           'CondoFees',                             'ElectricityCost',                       'GasCost',                               'WiFiCost',                              'MaintenanceMiscellaneousCost',          'AmenitiesCost',                        'AvailableFromDate', 'AvailableToDate, DailyCommonCost,                          HighSeasonBasePrice,                      HighSeason3GuestPrice,                    HighSeason4GuestPrice,                    LowSeasonBasePrice,                       LowSeason3GuestPrice,                     LowSeason4GuestPrice'
+            values = [     structure['Structure'], row[0], row[1],  row[2], row[3].replace('€','',).replace(',',''), row[4].replace('€','',).replace(',',''), row[5].replace('€','',).replace(',',''), row[6].replace('€','',).replace(',',''), row[7].replace('€','',).replace(',',''), row[8].replace('€','',).replace(',',''), row[9].replace('€','',).replace(',',''), row[10],            row[11],          row[12].replace('€','',).replace(',',''), row[13].replace('€','',).replace(',',''), row[14].replace('€','',).replace(',',''), row[15].replace('€','',).replace(',',''), row[16].replace('€','',).replace(',',''), row[17].replace('€','',).replace(',',''), row[18].replace('€','',).replace(',','')]  
             cursor.execute(insert_sql, values)
     #print(f'Table "{table_name}" successfully loaded.')
     
@@ -605,6 +637,62 @@ LIMIT 10
     #row = cursor.fetchone()
     #if row:
     #    print(row)
+
+#=============================================================================================================================
+# 6. 'high_season_periods' table: useful for select the daily price - by night -.  
+    df_high_season = pd.DataFrame(high_season_periods)
+    df_high_season.to_sql('high_season_periods', connection, if_exists='replace', index=False)
+#=============================================================================================================================
+# 7. 'daily_price' view: the daily price by night. The price's indications are in 'common_costs_by_year' table 
+    view_name = 'daily_price'
+    drop_view_sql = f'DROP VIEW IF EXISTS "{view_name}"'
+    cursor.execute(drop_view_sql)
+
+# time window for the price list
+    start_date = (date.today() - timedelta(days=31)).strftime('%Y-%m-%d') #starts  1 month ago
+    num_days = 364 * 2 # for the next 2 years
+
+
+    cursor.execute(f"""
+    CREATE VIEW IF NOT EXISTS {view_name} AS
+
+        WITH RECURSIVE
+        dates (date) AS (
+            SELECT 
+                '{start_date}' AS date
+            UNION ALL
+            SELECT 
+                DATE(date, '+1 day') AS date
+            FROM dates
+            LIMIT {num_days} + 1
+        )
+        , pricelist AS (
+            SELECT dates.date AS date
+                ,CASE WHEN high_season_periods.name IS NULL THEN 0 ELSE 1 END AS high_season
+                ,COALESCE(common_costs_by_year.StructureName, '---') AS StructureName
+                ,COALESCE(common_costs_by_year.HighSeasonBasePrice, 0) AS HighSeasonBasePrice
+                ,COALESCE(common_costs_by_year.HighSeason3GuestPrice, 0) AS HighSeason3GuestPrice
+                ,COALESCE(common_costs_by_year.HighSeason4GuestPrice, 0) AS HighSeason4GuestPrice
+                ,COALESCE(common_costs_by_year.LowSeasonBasePrice, 0) AS LowSeasonBasePrice
+                ,COALESCE(common_costs_by_year.LowSeason3GuestPrice, 0) AS LowSeason3GuestPrice
+                ,COALESCE(common_costs_by_year.LowSeason4GuestPrice, 0) AS LowSeason4GuestPrice 
+            FROM dates
+            LEFT OUTER JOIN common_costs_by_year ON (common_costs_by_year.Year = STRFTIME('%Y', dates.date))
+            LEFT OUTER JOIN high_season_periods ON (dates.date BETWEEN high_season_periods.start AND high_season_periods.end)
+        )
+        SELECT 
+            pricelist.date AS date
+            ,pricelist.StructureName AS StructureName
+            ,structures.max_guests AS max_guests
+            ,CASE WHEN high_season = 1 THEN pricelist.HighSeasonBasePrice   ELSE pricelist.LowSeasonBasePrice   END AS daily_base_price
+            ,CASE WHEN high_season = 1 THEN pricelist.HighSeason3GuestPrice ELSE pricelist.LowSeason3GuestPrice END AS daily_3guests_price
+            ,CASE WHEN high_season = 1 THEN pricelist.HighSeason4GuestPrice ELSE pricelist.LowSeason4GuestPrice END AS daily_4guests_price
+        FROM pricelist
+        INNER JOIN structures ON (structures.StructureName = pricelist.StructureName)
+    """)
+
+    connection.commit()
+
 
 
 #=============================================================================================================================
@@ -1215,7 +1303,7 @@ def PropertyAvailability():
     # ----------------------------------------------------
     offset = 2
     start_date = check_in - timedelta(days=offset)
-    end_date = check_out + timedelta(days=offset)
+    end_date = check_out + timedelta(days=offset - 1)
     num_days = (end_date - start_date).days 
 
 
@@ -1227,16 +1315,29 @@ def PropertyAvailability():
 
     select = f"""
     
-    WITH RECURSIVE
-    extended_dates (date) AS 
+    WITH 
+    dates_with_price AS 
         (
         SELECT 
-            '{start_date}' AS date
-        UNION ALL
-        SELECT 
-            DATE(date, '+1 day') AS date
-        FROM extended_dates
-        LIMIT {num_days}
+            date AS date
+    """
+    for str in Structures:
+        if str['max_guests'] >= guests:
+            select = select + f"""
+            ,SUM(
+                CASE WHEN daily_price.StructureName = '{str['Structure']}' THEN daily_base_price ELSE 0 END
+                ) AS [{str['nick_name']}_daily_base_price]
+            ,SUM(
+                CASE WHEN daily_price.StructureName = '{str['Structure']}' THEN daily_3guests_price ELSE 0 END
+                ) AS [{str['nick_name']}_daily_3guests_price]
+            ,SUM(
+                CASE WHEN daily_price.StructureName = '{str['Structure']}' THEN daily_4guests_price ELSE 0 END
+                ) AS [{str['nick_name']}_daily_4guests_price]
+            """
+    select = select + f"""
+        FROM daily_price
+        WHERE date BETWEEN '{start_date}' AND '{end_date}'
+        GROUP BY date        
         )
 
     , structures_with_capacity as
@@ -1260,21 +1361,38 @@ def PropertyAvailability():
         INNER JOIN bookings_by_day ON (bookings_by_day.Booking_id = bookings.Booking_id) 
         )
         SELECT
-            extended_dates.date                   AS Date
+            dates_with_price.date     AS Date
     """
     
     for str in Structures:
         if str['max_guests'] >= guests:
+            #select = select + f"""
+            #,SUM(CASE WHEN structures_with_capacity.StructureName = '{str['Structure']}' THEN CASE WHEN booked_days.Booking_id IS NULL THEN 0 ELSE 1 END ELSE 0 END) AS [{str['nick_name']}]
+            #"""
+
+
+
+            if guests <= 2:
+                price_col = f"dates_with_price.[{str['nick_name']}_daily_base_price]"
+            elif guests == 3:
+                price_col = f"dates_with_price.[{str['nick_name']}_daily_3guests_price]"
+            else:
+                price_col = f"dates_with_price.[{str['nick_name']}_daily_4guests_price]"
+
             select = select + f"""
-            ,SUM(CASE WHEN structures_with_capacity.StructureName = '{str['Structure']}' THEN CASE WHEN booked_days.Booking_id IS NULL THEN 0 ELSE 1 END ELSE 0 END) AS [{str['nick_name']}]
+                ,MAX(CASE 
+                        WHEN structures_with_capacity.StructureName = '{str['Structure']}' AND booked_days.Booking_id IS NULL THEN {price_col} 
+                        ELSE -1 
+                    END
+                    ) AS [{str['nick_name']}]
             """
     select = select + f"""
-        FROM extended_dates,
+        FROM dates_with_price,
             structures_with_capacity
             LEFT OUTER JOIN booked_days ON (booked_days.StructureName = structures_with_capacity.StructureName AND 
-                                            booked_days.Day = extended_dates.date) 
-        GROUP BY extended_dates.date
-        ORDER BY extended_dates.date
+                                            booked_days.Day = dates_with_price.date) 
+        GROUP BY dates_with_price.date
+        ORDER BY dates_with_price.date
     """
     
     print (select)
@@ -1282,11 +1400,12 @@ def PropertyAvailability():
 
     # Format the value for a better rendering of the date and the free/occupied cell
     df_grid['Date'] = pd.to_datetime(df_grid['Date']).dt.strftime('%a %d/%m')
+
     # 4. Mappiamo 0 -> 🟢 e 1 -> 🔴 su tutte le colonne degli appartamenti
     apt_cols = [c for c in df_grid.columns if c != 'Date']
     for col in apt_cols:
-        df_grid[col] = df_grid[col].map({0: '     ✅', 1: '     ⛔'}) # ✅: free |⛔: busy
-
+        # df_grid[col] = df_grid[col].map({0: '     ✅', 1: '     ⛔'}) # ✅: free |⛔: busy
+        df_grid[col] = df_grid[col].apply(lambda x: "⛔---" if x < 0 else f"✅€{int(x)}")
 
 
     # --- Extended rendering style for the dataframe ---
@@ -1337,7 +1456,7 @@ def PropertyAvailability():
         styled_df = df_grid.style.apply(style_extended_calendar, axis=None)
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
-        st.caption("✅ = Free | ⛔ = Busy | **Highlight** = Selected Stay")
+        st.caption("✅ Daily price = Free | ⛔ --- = Busy | **Highlight** = Selected Stay")
 
 
 
