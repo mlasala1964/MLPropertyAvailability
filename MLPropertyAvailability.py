@@ -65,6 +65,12 @@ if "Run" not in st.session_state:
 else:
     st.session_state.Run += 1
 
+
+#################################################################################################################################
+#                                                                                                                               #
+#                                    CONSTANTS                                                                                  #
+#                                                                                                                               #
+#################################################################################################################################
 if "Year" not in st.session_state:
     st.session_state.Year = 2026
 
@@ -86,7 +92,13 @@ high_season_periods = [
                         "end"  : '2027-11-02'  # 2 November 2027
                         }
                       ]
-  
+discount_policy =   {"last_minute_nr_days": 10,
+                    "percentage_weekly_discount": 0.1, #10%
+                    "percentage_last_minute_discount": 0.1 #10
+                    }
+#################################################################################################################################
+
+
 # 1. Initialize a trigger to force the data refresh
 if 'data_refresh_timestamp' not in st.session_state:
     st.session_state.data_refresh_timestamp = datetime.datetime.now()
@@ -1281,6 +1293,68 @@ def PropertyAvailability():
         }
         for row in rows
     ]
+    
+    # --- how much cost the selected booking? any discounts) ---
+    def HowMuchCost(StructureName, check_in, check_out, guests):
+        percentage_weekly_discount = discount_policy["percentage_weekly_discount"]
+        last_minute_nr_days = discount_policy["last_minute_nr_days"]
+        percentage_last_minute_discount = discount_policy["percentage_last_minute_discount"]
+
+        cost = {
+                "original_price"      : 0,
+                "weekly_discount"     : 0,
+                "last_minute_discount": 0,
+                "final_price"         : 0
+                }
+
+        select = f"""
+            WITH
+            daily_price_and_discounts AS (
+            SELECT
+                date AS date
+                ,CASE WHEN {guests} <= 2 THEN daily_base_price 
+                    WHEN {guests}  = 3 THEN daily_3guests_price 
+                    WHEN {guests}  = 4 THEN daily_4guests_price 
+                    ELSE 0  
+                END AS standard_price
+                ,CASE WHEN {nights} >= 7 THEN 1 ELSE 0 END AS weekly_discount_ON
+                ,CASE WHEN CAST(JULIANDAY(daily_price.date) - JULIANDAY('now') AS INTEGER) < ({last_minute_nr_days} - 1) THEN 1 ELSE 0 END AS last_minute_discount_ON
+            FROM daily_price 
+            WHERE StructureName = '{StructureName}'
+            AND date >= '{check_in}' 
+            AND date <  '{check_out}'
+            )
+            SELECT 
+                COALESCE(
+                SUM(standard_price)                                                         
+                , 0)                                                                        AS original_price
+                ,COALESCE(
+                SUM(weekly_discount_ON * standard_price * {percentage_weekly_discount})    
+                ,0)                                                                         AS weekly_discount
+                ,COALESCE(
+                SUM(last_minute_discount_ON * (standard_price - (weekly_discount_ON * standard_price * {percentage_weekly_discount})) * {percentage_weekly_discount}) 
+                , 0)                                                                        AS last_minute_discount
+                ,COALESCE(
+                SUM(standard_price) - 
+                SUM(weekly_discount_ON * standard_price * {percentage_weekly_discount}) -
+                SUM(last_minute_discount_ON * (standard_price - (weekly_discount_ON * standard_price * {percentage_weekly_discount})) * {percentage_weekly_discount})
+                , 0)                                                                        AS final_price
+            FROM daily_price_and_discounts 
+                """
+
+        print(select)
+        cursor.execute(select)
+        row = cursor.fetchone()
+        if row is not None:
+            cost = {
+                    "original_price"      : row[0],
+                    "weekly_discount"     : row[1],
+                    "last_minute_discount": row[2],
+                    "final_price"         : row[3]
+                    }
+        return cost
+
+                
 
     if not apartments:
         st.markdown(f"##### <small>❌ NO APTs for {summary_text}", unsafe_allow_html=True)
@@ -1289,12 +1363,41 @@ def PropertyAvailability():
 
         for apt in apartments:
             with st.container(border=True):
+                cost = HowMuchCost(apt['StructureName'], check_in, check_out, guests)
+    
+                #apt_link = f"[{apt['StructureName']}]({apt['hyperlink']})"
+                #st.markdown(f"*{apt_link}* 🟢 Available for ~~€ {cost['discounted_price']}~~ **€ {cost['original_price']}**")
+                #st.caption(f"Max capacity: {apt['max_guests']} guests")
+
                 apt_link = f"[{apt['StructureName']}]({apt['hyperlink']})"
-                st.markdown(f"*{apt_link}* 🟢 Available")
-                st.caption(f"Max capacity: {apt['max_guests']} guests")
+                if cost['original_price'] > cost['final_price']: # has_discount:
+                    orig = cost['original_price']
+                    disc = int(round(cost['final_price']))  
+                    pct = round((1 - disc / orig) * 100, 1 )
+                    pct_str = f"{pct:g}"
+                    
+                    price_display = (
+                        f"<span style='color:#6B7280; text-decoration:line-through;'>€{orig}</span> "
+                        f"<b style='color:#15803D; font-size:1.1rem;'>€{disc}</b> "
+                        f"<b style='color:#B91C1C;'>(Save {pct_str}%)</b>"
+                    )
+                else:
+                    price_display = f"<b>€{cost['original_price']}</b>"
 
-
-
+                st.markdown(
+                    f"🟢 {apt_link} — {price_display}", unsafe_allow_html=True
+                )
+                
+                discount_tags = []
+                if cost.get('weekly_discount', 0) > 0:
+                    discount_tags.append("7+ Nights")
+                if cost.get('last_minute_discount', 0) > 0:
+                    discount_tags.append("Last Minute")
+                discount_info = (
+                    f"     • 🏷️ {', '.join(discount_tags)}" if discount_tags else ""
+                )                
+                st.caption(f"Max capacity: {apt['max_guests']} guests{discount_info}")
+        
 
     # ----------------------------------------------------
     # ----------------------------------------------------
